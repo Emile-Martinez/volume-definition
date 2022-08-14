@@ -3,6 +3,7 @@
 #include "extended_predicates.h"
 #include "BSP.h"
 #include "string.h"
+#include <stdarg.h>
 
 #ifdef _MSC_VER
 #include <windows.h>
@@ -318,7 +319,21 @@ void logger(FILE* fp, const char* msg, ...)
 
 
 
-
+double det (std::vector<std::vector<double>> A)
+{
+    int N = A.size();
+    double c, r=1;
+    for(int i = 0; i < N; i++) {
+        for(int k = i+1; k < N; k++) {
+            c = A[k][i] / A[i][i];
+            for(int j = i; j < N; j++)
+                A[k][j]= A[k][j] - c*A[i][j];
+        }
+    }
+    for (int i = 0; i < N; i++)
+        r *=A[i][i];
+    return r;
+}
 
 
 
@@ -346,7 +361,7 @@ void logger(FILE* fp, const char* msg, ...)
 BSPcomplex* makePolyhedralMesh(
     const char* fileA_name, double* coords_A, uint32_t npts_A, uint32_t* tri_idx_A, uint32_t ntri_A,
     const char* fileB_name, double* coords_B, uint32_t npts_B, uint32_t* tri_idx_B, uint32_t ntri_B,
-    char bool_opcode, bool free_mem, bool verbose, bool logging)
+    char bool_opcode, bool free_mem, bool verbose, bool logging, int method, int smoothing)
 {
     //saveVRML("input1.wrl", coords_A, npts_A, tri_idx_A, ntri_A, false);
     //saveVRML("input2.wrl", coords_A, npts_A, tri_idx_A, ntri_A, true);
@@ -395,12 +410,6 @@ BSPcomplex* makePolyhedralMesh(
     if (mesh->num_vertices < 4) ip_error("Cannot mesh less than 4 vertices.");
     if (constraints->num_triangles < 1) ip_error("No non-degenerate constraints loaded.");
 
-    if (free_mem)
-    {
-        free(coords_A);
-        free(tri_idx_A);
-        if (two_input) { free(coords_B); free(tri_idx_B); }
-    }
     FILE* logfile;
 
     if (logging)
@@ -576,7 +585,46 @@ BSPcomplex* makePolyhedralMesh(
     if (verbose) printf("\tFind black faces %f s\n", (double)(time7 - time6) / CLOCKS_PER_SEC);
 
     //-Classification:intrenal/external cells-------------------------------------
-    complex.constraintsSurface_complexPartition(bool_opcode != '0');
+
+    if (method == 0) complex.constraintsSurface_complexPartition(bool_opcode != '0');
+    else if (method == 1){
+        std::vector<std::vector<points>> triangles(0);
+        for (int i = 0; i < ntri_A; i++)
+        {
+            triangles.push_back({
+                {coords_A[3*tri_idx_A[3*i]], coords_A[3*tri_idx_A[3*i]+1], coords_A[3*tri_idx_A[3*i]+2]},
+                {coords_A[3*tri_idx_A[3*i+1]], coords_A[3*tri_idx_A[3*i+1]+1], coords_A[3*tri_idx_A[3*i+1]+2]},
+                {coords_A[3*tri_idx_A[3*i+2]], coords_A[3*tri_idx_A[3*i+2]+1], coords_A[3*tri_idx_A[3*i+2]+2]}
+            });
+        }
+        if(two_input){        
+            std::cerr << "ntri_B : " << ntri_B << "\n";
+            for (int i = 0; i < ntri_B; i++)
+            {
+                triangles.push_back({
+                    {coords_B[3*tri_idx_B[3*i]], coords_B[3*tri_idx_B[3*i]+1], coords_B[3*tri_idx_B[3*i]+2]},
+                    {coords_B[3*tri_idx_B[3*i+1]], coords_B[3*tri_idx_B[3*i+1]+1], coords_B[3*tri_idx_B[3*i+1]+2]},
+                    {coords_B[3*tri_idx_B[3*i+2]], coords_B[3*tri_idx_B[3*i+2]+1], coords_B[3*tri_idx_B[3*i+2]+2]}
+                });
+            }
+        }
+        // for (auto t : triangles){
+        //     print_vector(t);
+        //     std::cout << "\n";
+        // }
+        complex.constraintsSurface_complexPartition_ray_approx(triangles, bool_opcode != '0', smoothing);
+    }
+    else if (method == 2) complex.constraintsSurface_complexPartition_ray_exact(bool_opcode != '0', smoothing);
+    else if (method == 3) complex.constraintsSurface_complexPartition_grid_exact(bool_opcode != '0', smoothing);
+    else if (method == 4) complex.constraintsSurface_complexPartition_grid_approx(bool_opcode != '0', smoothing);
+    else if (method == 5) complex.constraintsSurface_complexPartition_grid_new(bool_opcode != '0', smoothing);
+
+    if (free_mem)
+    {
+        free(coords_A);
+        free(tri_idx_A);
+        if (two_input) { free(coords_B); free(tri_idx_B); }
+    }
 
     clock_t time8 = clock();
     if (verbose) printf("\tInt-ext class. %f s\n", (double)(time8 - time7) / CLOCKS_PER_SEC);

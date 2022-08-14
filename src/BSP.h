@@ -6,9 +6,16 @@
 #include <vector>
 #include <ctype.h>
 #include <utility>
+#include <new>
+#include <set>
+#include <algorithm>
+#include <chrono>
 #include "delaunay.h"
 #include "conforming_mesh.h"
 #include "implicit_point.h"
+#include "./auxiliarian_function/graph.h"
+#include "./auxiliarian_function/collision.h"
+#include "auxiliarian_function/tools.h"
 
 // BSPface colours:
 // WHITE -> no 2D-intersection with constraints.
@@ -33,6 +40,80 @@
 // To manage with constraints edges
 #define ENDPTS_T pair<uint32_t,uint32_t>
 #define NEW_ENDPTS make_pair(UINT32_MAX, UINT32_MAX)
+
+extern std::vector<int> global_parameters;
+
+
+// Used to store N data, and to access the min in constant time, and to update the data in constant time
+// but we can increase by one the data
+
+class Min_find{
+    // We manipulate two kinds of int : the keys and their value (value = number of time we increased it)
+    std::vector<int> data; // The indexes of the vector are keys while the content is values
+    std::vector<std::list<int>> quick_access; // The indexes of the vector are the values and the integers of the list are keys
+    std::vector<std::list<int>::iterator> link; // The indexes of this vector are keys
+    
+
+    public:
+    int min; // min is a value, not a key
+
+    Min_find(int N){
+        min = 0;
+        for (int i = 0; i < N; i++) data.push_back(0);
+        quick_access.push_back({});
+        for (int i = 0; i < N; i++) {
+            quick_access[0].push_back(i);
+            link.push_back(quick_access[0].end());
+            link[i]--;
+        }
+    }
+
+    Min_find(std::vector<int> pre_values){
+        data = pre_values;
+        min = *std::min_element(pre_values.begin(), pre_values.end());
+        int max = *std::max_element(pre_values.begin(), pre_values.end()) + 1;
+        quick_access = std::vector<std::list<int>>(max);
+        link = {};
+
+        for (int i = 0; i < pre_values.size(); i++)
+        {
+            quick_access[pre_values[i]].push_back(i);
+            link.push_back(quick_access[pre_values[i]].end());
+            link[i]--;
+        }
+    }
+
+    void increase(int key){
+
+        quick_access[data[key]].erase(link[key]);
+        if (quick_access[data[key]].empty() && (data[key] == min)) min += 1;
+        data[key] += 1;
+
+        if (data[key] >= quick_access.size()) quick_access.push_back({});
+
+        quick_access[data[key]].push_back(key);
+        link[key] = quick_access[data[key]].end();
+        link[key]--;
+    }
+
+    int index_min(){
+        return quick_access[min].front();
+    }
+
+    inline int number_of_call(int key){
+        return data[key];
+    }
+
+    inline std::vector<int> number_of_call(){
+        return data;
+    }
+
+    void print_min_number(){
+        std::cout << min << " : " << quick_access[min].size() << " elements" << std::endl;
+    }
+};
+
+
 
 class BSPedge{  // The edge of a BSPcell.
 public:
@@ -176,6 +257,10 @@ public:
 class BSPcomplex{
     public:
 
+    std::vector<explicitPoint3D*> explicit_vertices; // We store every explicit vertices
+                                                     // Usefull for rotating the structure
+
+
     std::vector<genericPoint*> vertices; // mesh vertices + new vertices.
                                          // new vertices -> intersections
                                          // between tetrahedra and constraints.
@@ -262,7 +347,11 @@ class BSPcomplex{
     inline bool constraint_innerIntersects_face(const vector<uint32_t>& face_vrts);
     bool coplanar_constraint_innerIntersects_face(const vector<uint64_t>& face_edges,
                                                   const uint32_t constraint[3],
-                                                  const int dominant_normal_comp      );
+                                                  const int dominant_normal_comp);
+
+
+    bool segment_Intersectface(int face, genericPoint* a, genericPoint* b);
+
 
     // Upload Delaunay triangolation
     uint64_t removing_ghost_tets(const TetMesh* mesh, vector<uint64_t>& new_order);
@@ -314,8 +403,39 @@ class BSPcomplex{
     COLOUR_T blackAB_or_white(uint64_t face_ind, bool two_input);
 
     // Interior-exterior constraint surface
+
     void constraintsSurface_complexPartition(bool two_files=false);
+    void constraintsSurface_complexPartition_ray_approx(std::vector<std::vector<points>> triangles, bool two_files=false, int smoothing=0);
+    void constraintsSurface_complexPartition_ray_exact(bool two_files=false, int smoothing=0);
+    void constraintsSurface_complexPartition_grid_approx(bool two_files=false, int smoothing=0);
+    void constraintsSurface_complexPartition_grid_exact(bool two_files=false, int smoothing=0);
+    void constraintsSurface_complexPartition_grid_new(bool two_files=false, int smoothing=0);
+
+
     void markInternalCells(uint32_t skin_colour, uint32_t internal_label, const std::vector<double>& face_costs);
+
+    void markInternalCells_ray(uint32_t skin_colour, uint32_t internal_label, std::vector<genericPoint*> barycenters, std::vector<Face_add>& face_info, int smoothing=0);
+    void markInternalCells_ray(uint32_t skin_colour, uint32_t internal_label, std::vector<points> barycenters, std::vector<std::vector<points>> triangles, std::vector<Face_add>& face_info, int smoothing=0);
+
+    void markInternalCells_exact(uint32_t skin_colour, uint32_t internal_label, std::vector<Face_add>& face_info, int smoothing = 0);
+    void markInternalCells_approx(uint32_t skin_colour, uint32_t internal_label, std::vector<Face_add>& face_info, std::vector<points> vertex_coord, int smoothing=0);
+    void markInternalCells_new(uint32_t skin_colour, uint32_t internal_label, std::vector<Face_add>& face_info, std::vector<points> vertex_coord, int smoothing=0);
+
+
+
+    std::vector<std::vector<std::vector<std::pair<int, genericPoint*>>>> classify_facets_exact(int axis, int sample, std::vector<Face_add> &face_info, std::vector<genericPoint*>& toBeDeleted);
+    std::vector<std::vector<std::vector<std::pair<int, double>>>> classify_facets_approx(int axis, int sample, std::vector<Face_add>& face_info, std::vector<points>& vertex_coord);
+    std::vector<std::vector<std::vector<std::pair<int, double>>>> classify_facets_new(int axis, int sample, std::vector<Face_add>& face_info, std::vector<points>& vertex_coord, double& are_sample);
+    void shoot_axis_ray_exact(int axis, int sample, std::vector<int>& inside, std::vector<int>& outside, std::vector<Face_add> &face_info, uint32_t skin_colour);
+    void shoot_axis_ray_approx(int axis, int sample, std::vector<int>& inside, std::vector<int>& outside, std::vector<Face_add> &face_info, std::vector<points>& vertex_coord, uint32_t skin_colour);
+    double shoot_axis_ray_new(int axis, int sample, std::vector<int>& inside, std::vector<int>& outside, std::vector<int>& sum_ray, std::vector<Face_add> &face_info, std::vector<points>& vertex_coord, uint32_t skin_colour);
+    int count_intersection(genericPoint* a, genericPoint* b, int face_ind, int cell_ind, uint32_t skin_colour, Min_find &number_ray, std::vector<int>& inside_ray);
+
+
+    //smoothing
+    void smoothing1(std::vector<int> inside, std::vector<int> outside, std::vector<Face_add>& face_info, uint32_t internal_label, uint32_t skin_colour);
+    void smoothing2(std::vector<int> inside, std::vector<int> outside, std::vector<Face_add>& face_info, uint32_t internal_label, uint32_t skin_colour);
+    void smoothing3(std::vector<int> inside, std::vector<int> outside, double area_sample, std::vector<Face_add>& face_info, uint32_t internal_label, uint32_t skin_colour);
 
     // Tetrahedralization
     void triangle_detach(uint64_t face_ind);
@@ -327,6 +447,7 @@ class BSPcomplex{
                                            uint64_t vOppEdge_ind);
     bool cell_is_tetrahedrizable_from_v(const BSPcell& cell, uint32_t v);
     void makeTetrahedra();
+
 };
 
 /// <summary>
@@ -353,6 +474,10 @@ BSPcomplex* makePolyhedralMesh(
     const char* fileB_name = NULL, double* coords_B = NULL, uint32_t npts_B = 0, uint32_t* tri_idx_B = NULL, uint32_t ntri_B = 0,
     char bool_opcode = '0',
     bool free_mem = false,
-    bool verbose = false, bool logging = false);
+    bool verbose = false, bool logging = false,
+    int method = 0, int smoothing = 0);
+
+bool isFirstConnCellBelowFace(BSPface& f, BSPcomplex* cpx);
+
 
 #endif /* BSP_h */

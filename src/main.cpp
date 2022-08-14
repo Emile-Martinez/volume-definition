@@ -1,5 +1,17 @@
 #include "BSP.h"
 
+std::vector<int> global_parameters = std::vector<int>(0);
+
+int string_to_int(char* text){
+    int res = 0;
+    for (int i = 0; text[i] != '\0'; i++)
+    {
+        res = 10*res + ((int) (text[i] - '0'));
+    }
+    return res;
+}
+
+
 void read_OFF_file(const char* filename,
     double** vertices_p, uint32_t* npts,
     uint32_t** tri_vertices_p, uint32_t* ntri, bool verbose) {
@@ -59,7 +71,7 @@ int main(int argc, char** argv)
 {
 #ifndef DEBUG
     if (argc < 2) {
-        printf("\nUsage: mesh_generator [-v | -l | -s | -b | -t] inputfile_A.off [bool_opcode inputfile_B.off]\n\n"
+        printf("\nUsage: mesh_generator [-v | -l | -s | -b | -t | -m=i | -S=j] inputfile_A.off [bool_opcode inputfile_B.off] [additional parameters]\n\n"
             "Defines the volume enclosed by the input OFF file(s) and saves a volume mesh to 'volume.msh'\n\n"
             "Command line arguments:\n"
             "-v = verbose mode\n"
@@ -67,6 +79,20 @@ int main(int argc, char** argv)
             "-s = save the mesh bounding surface to 'skin.off'\n"
             "-b = save the subdivided constraints to 'black_faces.off'\n"
             "-t = triangulate/tetrahedrize output\n"
+            "-m = the choice of the method for deciding internal/external\n"
+            "i: {0,1,2,3,4, 5}\n"
+            "  0 -> Using min_cut problem\n"
+            "  1 -> Shooting ray in different direction with approximate intersection,\n"
+            "  2 -> Shooting ray in different direction with exact intersection,\n"
+            "  3 -> Using grid with exact method\n"
+            "  4 -> Using grid with approximate method\n"
+            "  5 -> Using grid with approximate method with an homogenization across all directions"
+            "-S = the choice of the smoothing method\n"
+            "j: {0,1,2,3}\n"
+            "  0 -> No smoothing, just the majority\n"
+            "  1 -> Smoothing using the local face minimization\n"
+            "  2 -> Smoothing spreading the confidence of each cell\n"
+            "  3 -> Smoothing using a min-cut algorithm (only implemented for m=5, but I will implement it for the rest, it will be quick)\n"
             "bool_opcode: {U, I, D}\n"
             "  U -> union (AuB),\n"
             "  I -> intersection (A^B),\n"
@@ -76,6 +102,8 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    std::srand(std::time(0));
+
     bool triangulate = false;
     bool verbose = false;
     bool logging = false;
@@ -84,6 +112,8 @@ int main(int argc, char** argv)
     char* fileA_name = NULL;
     char* fileB_name = NULL;
     char bool_opcode = '0';
+    int method = 0;
+    int smoothing = 0;
 
     for (int i = 1; i < argc; i++)
     {
@@ -94,12 +124,28 @@ int main(int argc, char** argv)
             else if (argv[i][1] == 'l') logging = true;
             else if (argv[i][1] == 'b') blackfaces = true;
             else if (argv[i][1] == 's') surfmesh = true;
+            else if (argv[i][1] == 'm') method = (int) (argv[i][3] - '0');
+            else if (argv[i][1] == 'S') smoothing = (int) (argv[i][3] - '0');
             else ip_error("Unknown option\n");
         }
+
+        //added
+        else if (argv[i][0] <= '9' && argv[i][0] >= '0'){
+            global_parameters.push_back(string_to_int(argv[i]));
+        } 
+        //end added
+
         else if (fileA_name == NULL) fileA_name = argv[i];
-        else if (bool_opcode == '0') bool_opcode = argv[i][0];
-        else if (fileB_name == NULL) fileB_name = argv[i];
-        else ip_error("Too many args passed\n");
+        else if ((bool_opcode == '0') && (global_parameters.size() == 0) ) {
+            if (argv[i][0] <= '9' && argv[i][0] >= '0') global_parameters.push_back(string_to_int(argv[i]));
+            else bool_opcode = argv[i][0];
+        }
+        else if (fileB_name == NULL && (global_parameters.size() == 0)) fileB_name = argv[i];
+        else if (argv[i][0] <= '9' && argv[i][0] >= '0') global_parameters.push_back(string_to_int(argv[i]));
+
+        
+        else ip_error("Wrong args passed\n");
+       
     }
 
     bool two_input = (bool_opcode != '0');
@@ -142,7 +188,7 @@ int main(int argc, char** argv)
     BSPcomplex* complex = makePolyhedralMesh(
         fileA_name, coords_A, ncoords_A, tri_idx_A, ntriidx_A,
         fileB_name, coords_B, ncoords_B, tri_idx_B, ntriidx_B,
-        bool_opcode, true, verbose, logging
+        bool_opcode, true, verbose, logging, method, smoothing
         );
 
     printf("Writing output file...\n");

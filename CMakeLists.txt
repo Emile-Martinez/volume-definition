@@ -23,6 +23,11 @@ set (SOURCES
     Indirect_Predicates/numerics.cpp
     Indirect_Predicates/predicates/hand_optimized_predicates.cpp
     Indirect_Predicates/predicates/indirect_predicates.cpp
+    src/auxiliarian_function/graph.cpp
+    src/auxiliarian_function/tools.cpp
+    src/auxiliarian_function/debug.cpp
+    src/auxiliarian_function/collision.cpp
+    src/auxiliarian_function/geometric_collision.cpp
 )
 
 # add the executable

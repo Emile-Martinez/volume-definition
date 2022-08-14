@@ -808,9 +808,13 @@ BSPcomplex::BSPcomplex(const TetMesh* mesh, const constraints_t* _constraints,
   // Uploading the vertices of the mesh
   vertices.resize(mesh->num_vertices);
   for(uint32_t vrt=0; vrt<mesh->num_vertices; vrt++)
-    vertices[vrt] = new explicitPoint3D(mesh->vertices[vrt].coord[0],
+    {auto point = new explicitPoint3D(mesh->vertices[vrt].coord[0],
                                             mesh->vertices[vrt].coord[1],
                                             mesh->vertices[vrt].coord[2]);
+
+    explicit_vertices.push_back(point);
+
+    vertices[vrt] = point;}
 
   // Initialize vrts_orBin:
   // since orient3D can be -1, 0 or 1 all elements are set to 2.
@@ -2130,7 +2134,11 @@ void BSPcomplex::computeBaricenter(const vector<uint32_t>& vrts){
             break; // This line should be commented to have an actual barycenter !!!!!!
         }
 
-    vertices.push_back(new explicitPoint3D(sum_x / np, sum_y / np, sum_z / np));
+    auto point = new explicitPoint3D(sum_x / np, sum_y / np, sum_z / np);
+
+    explicit_vertices.push_back(point);
+
+    vertices.push_back(point);
     vrts_visit.push_back(0);
 }
 
@@ -2596,6 +2604,11 @@ void BSPcomplex::saveSkin(const char *filename, const char bool_opcode, bool tri
             cell.place = (cell.place == INTERNAL_A && !(cell.place == INTERNAL_AB)) ? (INTERNAL_A) : (EXTERNAL);
     }
 
+    else if (bool_opcode == 'S') { // Symetric difference
+        for (BSPcell& cell : cells)
+            cell.place = (cell.place == INTERNAL_A || cell.place == INTERNAL_B) ? (INTERNAL_A) : (EXTERNAL);
+    }
+
     // Set "internal" depending on bool_opcode and find border faces to save
     vector<uint64_t> mark(faces.size(), 0);
     for (BSPcell& cell : cells)
@@ -2686,6 +2699,12 @@ void BSPcomplex::saveMesh(const char* filename, const char bool_opcode, bool tet
             cell.place = (cell.place == INTERNAL_A && !(cell.place == INTERNAL_AB)) ? (INTERNAL_A) : (EXTERNAL);
     }
 
+    else if (bool_opcode == 'S') { // Symetric difference
+        for (BSPcell& cell : cells)
+            cell.place = (cell.place == INTERNAL_A || cell.place == INTERNAL_B) ? (INTERNAL_A) : (EXTERNAL);
+    }
+
+
     if (tetrahedrize)
     {
         makeTetrahedra();
@@ -2708,13 +2727,24 @@ void BSPcomplex::saveMesh(const char* filename, const char bool_opcode, bool tet
 
         // Print vertices coordinates
         for (uint32_t v = 0; v < vertices.size(); v++) if (vrts_visit[v]) f << (*vertices[v]) << "\n";
+        double total_volume = 0;
 
         // Print tets
-        for (uint32_t t = 0; t < final_tets.size(); t += 4)
+        for (uint32_t t = 0; t < final_tets.size(); t += 4){
             f << "4 " << vmap[final_tets[t]] << " "
             << vmap[final_tets[t + 1]] << " "
             << vmap[final_tets[t + 2]] << " "
             << vmap[final_tets[t + 3]] << "\n";
+
+            points a(3), b(3), c(3), d(3);
+            vertices[final_tets[t]]->getApproxXYZCoordinates(a[0], a[1], a[2]);
+            vertices[final_tets[t + 1]]->getApproxXYZCoordinates(b[0], b[1], b[2]);
+            vertices[final_tets[t + 2]]->getApproxXYZCoordinates(c[0], c[1], c[2]);
+            vertices[final_tets[t + 3]]->getApproxXYZCoordinates(d[0], d[1], d[2]);
+            
+            total_volume += volume_tet(a, b, c, d);
+        }
+        std::cout << "Total volume of the inside : " << total_volume << "\n";
     }
     else
     {
