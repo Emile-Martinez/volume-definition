@@ -1,14 +1,14 @@
 # Convex Polyhedral Meshing for Robust Solid Modeling
 
-This code implements our volume meshing algorithm described in "**Convex Polyhedral Meshing for Robust Solid Modeling**" by Lorenzo Diazzi and Marco Attene (ACM Trans Graphics Vol 40, N. 6, Procs of SIGGRAPH Asia 2021). 
-Please refer to our paper for details. You may download a copy here: http://arxiv.org/abs/2109.14434
+This code implements our volume meshing algorithm described in "**Convex Polyhedral Meshing for Robust Solid Modeling**" by Lorenzo Diazzi and Marco Attene (ACM Trans Graphics Vol 40, N. 6, Procs of SIGGRAPH Asia 2021) and the volume definition based on the volume meshing described in the attached report, by Emile Martinez. 
+Please refer to our paper for details on the volume meshing. You may download a copy here: http://arxiv.org/abs/2109.14434
 
 <p align="center"><img src="teaser_img.png"></p>
 
 ## Usage
 Clone this repository, including submodules, with:
 ```
-git clone --recursive https://github.com/MarcoAttene/VolumeMesher
+git clone --recursive https://github.com/Emile-Martinez/Volume-Definition
 ```
 Once done, you may build the executable as follows:
 ```
@@ -58,13 +58,9 @@ creates a file called ``black_faces.off`` representing the input model with inte
 
 
 
-We tested our code on MacOS (GCC-10) and Windows (MSVC 2019).
-It should work on Linux-GCC and MacOS-Clang too, but we have not tested it on these configurations.
+We tested our code on Linux (in a debian base)
 
-|:warning: WARNING: Apparently, CLANG does not support a fully IEEE compliant floating point environment which is necessary to guarantee that indirect predicates work as expected. The only way we found to guarantee correctness on this compiler was to disable all optimizations. Please be aware of this fact should you notice a performance degradation in your experiments. |
-| --- |
-
-## Citing us
+## Citing us for the volume mesher
 If you use our code in your academic projects, please cite our paper using the following BibTeX entry:
 ```
 @article{volmesh2021,
